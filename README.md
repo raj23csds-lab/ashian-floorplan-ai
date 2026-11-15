@@ -274,9 +274,6 @@ Important: This evaluation measures database question-answer correctness against
 - Database access for assistant queries is restricted to read-only operations and permitted tables.
 - API credentials must not be included in public repositories.
 
-## 13. Author
-
-Developed as part of the Ashian Tech Intern Take-Home Assignment.
 
 Project: Ask Your Floor Plan
 Focus: Computer Vision, Data Extraction, SQLite, SQL, LLM Integration, and Evaluation.
