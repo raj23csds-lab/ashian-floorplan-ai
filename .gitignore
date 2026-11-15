@@ -1,0 +1,9 @@
+.env
+__pycache__/
+*.py[cod]
+.pytest_cache/
+venv/
+
+.venv/
+
+outputs/floorplan_backup.db
