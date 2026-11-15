@@ -6,7 +6,12 @@ from pathlib import Path
 from gemini_client import generate_sql, ask_gemini
 from retrieval_engine import retrieve_data
 
-DB_FILE = Path(__file__).resolve().parent.parent / "outputs" / "floorplan.db"
+
+DB_FILE = (
+    Path(__file__).resolve().parent.parent
+    / "outputs"
+    / "floorplan.db"
+)
 
 ALLOWED_TABLES = {"plans", "elements", "element_links"}
 MAX_ROWS = 5000
@@ -59,7 +64,9 @@ def execute_readonly_sql(sql):
         rows = cursor.fetchmany(MAX_ROWS + 1)
 
         if len(rows) > MAX_ROWS:
-            raise ValueError("Query result exceeds the maximum allowed rows.")
+            raise ValueError(
+                "Query result exceeds the maximum allowed rows."
+            )
 
         return columns, rows
 
@@ -75,22 +82,27 @@ def local_answer(question, evidence):
 
     if "average" in q:
         return (
-            f"The average number of rooms across all plans is "
+            "The average number of rooms across all plans is "
             f"{evidence[0][0]}."
         )
 
     if "more than" in q and "door" in q:
         threshold_match = re.search(r"more than\s+(\d+)", q)
-        threshold = threshold_match.group(1) if threshold_match else "the specified threshold"
+        threshold = (
+            threshold_match.group(1)
+            if threshold_match
+            else "the specified threshold"
+        )
 
         return (
             f"{len(evidence)} plans have more than {threshold} doors. "
-            "Plan IDs: " +
-            ", ".join(str(row[0]) for row in evidence)
+            "Plan IDs: "
+            + ", ".join(str(row[0]) for row in evidence)
         )
 
     if "largest room" in q:
-        room_id, area = evidence[0][0], evidence[0][1]
+        room_id = evidence[0][0]
+        area = evidence[0][1]
 
         return (
             f"The largest room in plan {plan_id} is room ID "
@@ -105,13 +117,31 @@ def local_answer(question, evidence):
             + ", ".join(room_ids)
         )
 
+    if "window" in q and ("how many" in q or "count" in q):
+        return (
+            f"Plan {plan_id} has {evidence[0][0]} windows."
+        )
+
+    if "door" in q and ("how many" in q or "count" in q):
+        return (
+            f"Plan {plan_id} has {evidence[0][0]} doors."
+        )
+
+    if "wall" in q and ("how many" in q or "count" in q):
+        return (
+            f"Plan {plan_id} has {evidence[0][0]} walls."
+        )
+
     if "room" in q and ("how many" in q or "count" in q):
-        return f"Plan {plan_id} has {evidence[0][0]} rooms."
+        return (
+            f"Plan {plan_id} has {evidence[0][0]} rooms."
+        )
 
     return f"Database returned: {evidence}"
 
 
 def answer_question(question):
+
     if not question.strip():
         return {
             "answer": "Please enter a question.",
@@ -119,9 +149,12 @@ def answer_question(question):
             "evidence": []
         }
 
+    # Decline questions outside the available database.
     if "rent" in question.lower():
         return {
-            "answer": "Rent information is not available in the database.",
+            "answer": (
+                "Rent information is not available in the database."
+            ),
             "sql": "No query executed",
             "evidence": []
         }
@@ -130,13 +163,16 @@ def answer_question(question):
     columns = []
     evidence = []
 
-    # Try Gemini-generated SQL first.
+    # First try Gemini-generated SQL.
     try:
         sql = generate_sql(question)
 
         if not sql or sql.strip().upper() == "UNSUPPORTED":
             return {
-                "answer": "This question is not supported by the available database.",
+                "answer": (
+                    "This question is not supported by the "
+                    "available database."
+                ),
                 "sql": "No query executed",
                 "evidence": []
             }
@@ -144,12 +180,15 @@ def answer_question(question):
         columns, evidence = execute_readonly_sql(sql)
 
     except Exception:
-        # Deterministic retrieval fallback.
+        # If Gemini SQL generation fails, use local retrieval.
         result = retrieve_data(question)
 
         if not result:
             return {
-                "answer": "This question cannot be answered using the available data.",
+                "answer": (
+                    "This question cannot be answered using "
+                    "the available data."
+                ),
                 "sql": "No query executed",
                 "evidence": []
             }
@@ -159,12 +198,14 @@ def answer_question(question):
 
     if not evidence:
         return {
-            "answer": "The database query returned no matching records.",
+            "answer": (
+                "The database query returned no matching records."
+            ),
             "sql": sql,
             "evidence": []
         }
 
-    # Ask Gemini to explain only the retrieved evidence.
+    # Ask Gemini to explain only the database evidence.
     try:
         prompt = f"""
 Answer using ONLY the database evidence below.
@@ -180,7 +221,19 @@ Give a concise answer.
 
         answer = ask_gemini(prompt)
 
-        if not answer or answer.startswith("Gemini API error"):
+        # Detect Gemini API failures and use local explanation.
+        if not answer or any(
+            error in answer.lower()
+            for error in [
+                "gemini api error",
+                "gemini api request failed",
+                "429",
+                "too many requests",
+                "rate limit",
+                "quota",
+                "resource_exhausted"
+            ]
+        ):
             answer = local_answer(question, evidence)
 
     except Exception:
@@ -194,6 +247,7 @@ Give a concise answer.
 
 
 if __name__ == "__main__":
+
     print("Ask your floor-plan assistant (type 'exit' to stop).")
 
     while True:
